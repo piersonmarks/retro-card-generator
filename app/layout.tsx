@@ -22,10 +22,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${pressStart2P.className} ${pressStart2P.variable}`}>
-      <body className="antialiased">
-        {children}
-      </body>
+    <html
+      className={`${pressStart2P.className} ${pressStart2P.variable}`}
+      lang="en"
+    >
+      <body className="antialiased">{children}</body>
     </html>
   );
 }

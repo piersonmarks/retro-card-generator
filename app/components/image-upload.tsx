@@ -1,21 +1,20 @@
 "use client";
 
-import { useCallback, useState, useRef, useEffect } from "react";
-import Image from "next/image";
-import { Upload } from "lucide-react";
-import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import Image from "next/image";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
+import { z } from "zod";
 import { Button } from "@/components/ui/8bit/button";
 import {
   Field,
   FieldContent,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
   FieldLegend,
   FieldSet,
-  FieldError,
 } from "@/components/ui/field";
 
 // Zod schema for form validation
@@ -25,14 +24,12 @@ const formSchema = z.object({
       z.instanceof(File, { message: "Please select a file to upload" }),
       z.undefined(),
     ])
-    .refine(
-      (file): file is File => file instanceof File,
-      { message: "Please select a file to upload" }
-    )
-    .refine(
-      (file) => file instanceof File && file.type.startsWith("image/"),
-      { message: "Please upload a valid image file" }
-    )
+    .refine((file): file is File => file instanceof File, {
+      message: "Please select a file to upload",
+    })
+    .refine((file) => file instanceof File && file.type.startsWith("image/"), {
+      message: "Please upload a valid image file",
+    })
     .refine(
       (file) => file instanceof File && file.size <= 10 * 1024 * 1024, // 10MB
       { message: "Image size must be less than 10MB" }
@@ -102,7 +99,7 @@ export default function ImageUpload() {
 
   const onSubmit = useCallback(
     async (data: FormValues) => {
-      if (!data.image || !(data.image instanceof File)) {
+      if (!(data.image && data.image instanceof File)) {
         form.setError("image", {
           type: "manual",
           message: "Please select an image file",
@@ -113,32 +110,23 @@ export default function ImageUpload() {
       const file = data.image;
 
       try {
-        // Convert file to base64 for submission
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-          const base64Image = reader.result as string;
+        // Create FormData to send the file
+        const formData = new FormData();
+        formData.append("image", file);
 
-          // Submit to API endpoint
-          const response = await fetch("/api/generate-image", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              image: base64Image,
-              fileName: file.name,
-            }),
-          });
+        // Submit to API endpoint
+        const response = await fetch("/api/generate-image", {
+          method: "POST",
+          body: formData,
+        });
 
-          if (!response.ok) {
-            throw new Error("Failed to process image");
-          }
+        if (!response.ok) {
+          throw new Error("Failed to process image");
+        }
 
-          // Handle success - you can process the response here
-          const result = await response.text();
-          console.log("Image processed:", result);
-        };
-        reader.readAsDataURL(file);
+        // Handle success - you can process the response here
+        const result = await response.text();
+        console.log("Image processed:", result);
       } catch (err) {
         form.setError("image", {
           type: "manual",
@@ -155,53 +143,82 @@ export default function ImageUpload() {
         <FieldSet>
           <FieldLegend>Image Upload</FieldLegend>
           <FieldDescription>
-            Upload an image to generate your Pokemon card. All images are processed securely.
+            Upload an image to generate your Pokemon card. All images are
+            processed securely.
           </FieldDescription>
 
           <FieldGroup>
             <Controller
-              name="image"
               control={form.control}
+              name="image"
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
                   <FieldLabel htmlFor="image-upload">Select Image</FieldLabel>
-                  {!uploadedImage ? (
+                  {uploadedImage ? (
+                    <>
+                      <div className="relative aspect-square max-w-full overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
+                        <Image
+                          alt="Uploaded image preview"
+                          className="h-full w-full object-cover object-center"
+                          height={800}
+                          src={uploadedImage}
+                          unoptimized
+                          width={800}
+                        />
+                        <Button
+                          className="absolute top-2 right-2"
+                          onClick={handleRemove}
+                          size="sm"
+                          type="button"
+                          variant="outline"
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                      {fieldState.invalid && (
+                        <FieldError
+                          errors={[fieldState.error]}
+                          id="image-upload-error"
+                        />
+                      )}
+                    </>
+                  ) : (
                     <>
                       <div
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDrop(e, field.onChange)}
-                        className={`
-                          relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-12 transition-colors cursor-pointer
-                          ${
-                            isDragging
-                              ? "border-primary bg-primary/5 dark:bg-primary/10"
-                              : "border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-600"
-                          }
+                        className={`relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-12 transition-colors ${
+                          isDragging
+                            ? "border-primary bg-primary/5 dark:bg-primary/10"
+                            : "border-zinc-300 hover:border-zinc-400 dark:border-zinc-700 dark:hover:border-zinc-600"
+                        }
                         `}
                         onClick={() => fileInputRef.current?.click()}
+                        onDragLeave={handleDragLeave}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, field.onChange)}
                       >
                         <input
-                          ref={fileInputRef}
-                          type="file"
                           accept="image/*"
+                          aria-describedby={
+                            fieldState.invalid
+                              ? "image-upload-error"
+                              : undefined
+                          }
+                          aria-invalid={fieldState.invalid}
+                          className="hidden"
+                          id="image-upload"
+                          name={field.name}
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (file) {
                               field.onChange(file);
                             }
                           }}
-                          className="hidden"
-                          id="image-upload"
-                          name={field.name}
-                          aria-invalid={fieldState.invalid}
-                          aria-describedby={
-                            fieldState.invalid ? "image-upload-error" : undefined
-                          }
+                          ref={fileInputRef}
+                          type="file"
                         />
-                        <div className="flex flex-col items-center gap-4 text-center pointer-events-none">
+                        <div className="pointer-events-none flex flex-col items-center gap-4 text-center">
                           <FieldContent>
-                            <p className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+                            <p className="font-medium text-lg text-zinc-900 dark:text-zinc-100">
                               Drag and drop an image here
                             </p>
                             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
@@ -212,41 +229,14 @@ export default function ImageUpload() {
                       </div>
                       {!fieldState.invalid && (
                         <FieldDescription>
-                          Supports PNG, JPG, GIF, and other image formats (max 10MB)
+                          Supports PNG, JPG, GIF, and other image formats (max
+                          10MB)
                         </FieldDescription>
                       )}
                       {fieldState.invalid && (
                         <FieldError
-                          id="image-upload-error"
                           errors={[fieldState.error]}
-                        />
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <div className="relative rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-50 dark:bg-zinc-900 aspect-square max-w-full">
-                        <Image
-                          src={uploadedImage}
-                          alt="Uploaded image preview"
-                          width={800}
-                          height={800}
-                          className="w-full h-full object-cover object-center"
-                          unoptimized
-                        />
-                        <Button
-                          type="button"
-                          onClick={handleRemove}
-                          variant="outline"
-                          size="sm"
-                          className="absolute top-2 right-2"
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                      {fieldState.invalid && (
-                        <FieldError
                           id="image-upload-error"
-                          errors={[fieldState.error]}
                         />
                       )}
                     </>
@@ -261,7 +251,11 @@ export default function ImageUpload() {
           <FieldSet>
             <FieldGroup>
               <Field>
-                <Button type="submit" disabled={isSubmitting} className="w-full">
+                <Button
+                  className="w-full"
+                  disabled={isSubmitting}
+                  type="submit"
+                >
                   {isSubmitting ? "Processing..." : "Generate Card"}
                 </Button>
               </Field>
@@ -272,4 +266,3 @@ export default function ImageUpload() {
     </form>
   );
 }
-

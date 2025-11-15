@@ -1,19 +1,21 @@
-import { start } from 'workflow/api';
-import { generateCardWorkflow } from '@/app/workflows/generate-card';
+import { start } from "workflow/api";
+import { generateCardWorkflow } from "@/app/workflows/generate-card";
 
 export async function POST(request: Request) {
-  const { image, fileName, prompt } = await request.json();
+  const formData = await request.formData();
+  const image = formData.get("image") as File;
 
-  // Use image data if provided, otherwise fall back to prompt
-  const workflowInput = image ? { image, fileName } : prompt;
+  if (!(image && image instanceof File)) {
+    return Response.json({ error: "Image file is required" }, { status: 400 });
+  }
 
-  const run = await start(generateCardWorkflow, [workflowInput]);
+  const run = await start(generateCardWorkflow, [{ image }]);
 
   // Get the readable stream and return it as a response
   const stream = run.getReadable();
   return new Response(stream, {
     headers: {
-      'Content-Type': 'application/octet-stream',
+      "Content-Type": "application/octet-stream",
     },
   });
-};
+}
