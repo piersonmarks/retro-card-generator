@@ -109,6 +109,9 @@ The app uses a multi-step workflow:
 3. **Card Creation** - Combines the generated artwork with personal details into a complete Pokemon card
 4. **Storage** - Saves the final card to Vercel Blob storage and provides a download link
 
+## Notes
+We can't use the x402-next official middleware because it breaks the rules of middleware and causes the request to be consumed twice.
+
 ## License
 
 MIT
