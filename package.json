@@ -11,6 +11,7 @@
   "dependencies": {
     "@ai-sdk/fal": "^1.0.22",
     "@ai-sdk/openai": "^2.0.67",
+    "@coinbase/x402": "^0.7.1",
     "@fal-ai/client": "^1.7.2",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-label": "^2.1.8",
@@ -30,7 +31,10 @@
     "resvg": "^1.6.4",
     "satori": "^0.18.3",
     "tailwind-merge": "^3.4.0",
+    "viem": "^2.39.0",
     "workflow": "^4.0.1-beta.13",
+    "x402-fetch": "^0.7.0",
+    "x402-next": "^0.7.1",
     "zod": "^4.1.11"
   },
   "devDependencies": {

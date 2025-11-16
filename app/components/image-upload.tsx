@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
+import { decodeXPaymentResponse, wrapFetchWithPayment } from "x402-fetch";
 import { z } from "zod";
 import { Button } from "@/components/ui/8bit/button";
 import { Input } from "@/components/ui/8bit/input";
@@ -18,6 +19,8 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/components/ui/field";
+import { getClientWallet } from "@/lib/wallet/client";
+import { useWallet } from "../hooks/use-wallet";
 
 // Zod schema for form validation
 const formSchema = z.object({
@@ -88,13 +91,23 @@ async function submitFormData(
   onProgress: (msg: string) => void,
   onSuccess: (url: string) => void
 ) {
-  const response = await fetch("/api/generate-image", {
+  // Get the user's wallet for payment
+  const walletClient = await getClientWallet();
+
+  // Wrap fetch with x402 payment functionality
+  // biome-ignore lint/suspicious/noExplicitAny: viem WalletClient type compatibility with x402-fetch
+  const fetchWithPayment = wrapFetchWithPayment(fetch, walletClient as any);
+
+  const response = await fetchWithPayment("/api/generate-image", {
     method: "POST",
     body: formData,
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to process image");
+  // Log payment response if available
+  const paymentResponseHeader = response.headers.get("x-payment-response");
+  if (paymentResponseHeader) {
+    const paymentResponse = decodeXPaymentResponse(paymentResponseHeader);
+    console.log("Payment successful:", paymentResponse);
   }
 
   const reader = response.body?.getReader();
@@ -111,6 +124,7 @@ export default function ImageUpload() {
   const [progressMessage, setProgressMessage] = useState<string>("");
   const [generatedCardUrl, setGeneratedCardUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { isConnected, connect } = useWallet();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -207,6 +221,19 @@ export default function ImageUpload() {
         return;
       }
 
+      // Check if wallet is connected, if not, prompt connection
+      if (!isConnected) {
+        try {
+          await connect();
+        } catch {
+          form.setError("image", {
+            type: "manual",
+            message: "Please connect your wallet to generate a card",
+          });
+          return;
+        }
+      }
+
       const file = data.image;
 
       try {
@@ -235,7 +262,7 @@ export default function ImageUpload() {
         });
       }
     },
-    [form]
+    [form, isConnected, connect]
   );
 
   // If card is generated, show the result view instead of the form
