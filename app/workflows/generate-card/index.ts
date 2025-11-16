@@ -1,20 +1,30 @@
+import { analyzeImageStep } from "./steps/analyze-image";
+import { generateCardStep } from "./steps/generate-card";
 import { generateImageStep } from "./steps/generate-image";
 
-export const generateCardWorkflow = async ({ image }: { image: File }) => {
+export async function generateCardWorkflow({
+  image,
+  name,
+  birthday,
+}: {
+  image: Uint8Array;
+  name: string;
+  birthday: string;
+}) {
   "use workflow";
 
-  // Always use the provided image with nano-banana/edit
-  // Generate edited image using AI SDK with nano-banana/edit
-  const retroImage = await generateImageStep(image);
+  // Analyze the image to determine Pokemon characteristics
+  const analysis = await analyzeImageStep(image);
 
-  // Analyze the edited image to get the data
+  const retroImage = await generateImageStep(image, analysis.type);
+  const url = await generateCardStep({
+    image: retroImage,
+    name,
+    birthday,
+    type: analysis.type,
+    specialAbility: analysis.specialAbility,
+    specialAbilityDescription: analysis.specialAbilityDescription,
+  });
 
-  // Create the card using satori and the data
-
-  // Save the card to blob storage
-  const url = "https://example.com/card.png";
-
-  return {
-    url,
-  };
-};
+  return { url };
+}

@@ -6,6 +6,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import { Button } from "@/components/ui/8bit/button";
+import { Input } from "@/components/ui/8bit/input";
+import { Label } from "@/components/ui/8bit/label";
 import {
   Field,
   FieldContent,
@@ -19,6 +21,8 @@ import {
 
 // Zod schema for form validation
 const formSchema = z.object({
+  name: z.string().min(1, { message: "Name is required" }),
+  birthday: z.string().min(1, { message: "Birthday is required" }),
   image: z
     .union([
       z.instanceof(File, { message: "Please select a file to upload" }),
@@ -38,14 +42,81 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
+function handleMessage(
+  data: { type: string; message?: string; url?: string },
+  onProgress: (msg: string) => void,
+  onSuccess: (url: string) => void
+) {
+  if (data.type === "progress") {
+    onProgress(data.message || "");
+  } else if (data.type === "success") {
+    onSuccess(data.url || "");
+  } else if (data.type === "error") {
+    throw new Error(data.message);
+  }
+}
+
+async function readStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  onProgress: (msg: string) => void,
+  onSuccess: (url: string) => void
+) {
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.trim()) {
+        continue;
+      }
+      handleMessage(JSON.parse(line), onProgress, onSuccess);
+    }
+  }
+}
+
+async function submitFormData(
+  formData: FormData,
+  onProgress: (msg: string) => void,
+  onSuccess: (url: string) => void
+) {
+  const response = await fetch("/api/generate-image", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to process image");
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("No response stream available");
+  }
+
+  await readStream(reader, onProgress, onSuccess);
+}
+
 export default function ImageUpload() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [progressMessage, setProgressMessage] = useState<string>("");
+  const [generatedCardUrl, setGeneratedCardUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      name: "",
+      birthday: "",
       image: undefined,
     },
     mode: "onChange",
@@ -92,10 +163,39 @@ export default function ImageUpload() {
 
   const handleRemove = useCallback(() => {
     form.reset();
+    setGeneratedCardUrl(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   }, [form]);
+
+  const handleDownload = useCallback(async () => {
+    if (!generatedCardUrl) {
+      return;
+    }
+
+    try {
+      // Fetch the image as a blob to force download
+      const response = await fetch(generatedCardUrl);
+      const blob = await response.blob();
+
+      // Create a blob URL
+      const blobUrl = URL.createObjectURL(blob);
+
+      // Create and click download link
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = "pokemon-card.png";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // Clean up the blob URL
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error("Failed to download image:", error);
+    }
+  }, [generatedCardUrl]);
 
   const onSubmit = useCallback(
     async (data: FormValues) => {
@@ -110,24 +210,25 @@ export default function ImageUpload() {
       const file = data.image;
 
       try {
-        // Create FormData to send the file
+        setProgressMessage("Starting...");
+        setGeneratedCardUrl(null);
+
         const formData = new FormData();
         formData.append("image", file);
+        formData.append("name", data.name);
+        formData.append("birthday", data.birthday);
 
-        // Submit to API endpoint
-        const response = await fetch("/api/generate-image", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!response.ok) {
-          throw new Error("Failed to process image");
-        }
-
-        // Handle success - you can process the response here
-        const result = await response.text();
-        console.log("Image processed:", result);
+        await submitFormData(
+          formData,
+          (msg) => setProgressMessage(msg),
+          (url) => {
+            setProgressMessage("");
+            setGeneratedCardUrl(url);
+          }
+        );
       } catch (err) {
+        setProgressMessage("");
+        setGeneratedCardUrl(null);
         form.setError("image", {
           type: "manual",
           message: err instanceof Error ? err.message : "An error occurred",
@@ -137,15 +238,80 @@ export default function ImageUpload() {
     [form]
   );
 
+  // If card is generated, show the result view instead of the form
+  if (generatedCardUrl) {
+    return (
+      <div className="flex flex-col items-center gap-6">
+        <div
+          className="relative w-full overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"
+          style={{ aspectRatio: "5/7", maxWidth: "500px" }}
+        >
+          <Image
+            alt="Generated Pokemon card"
+            className="h-full w-full object-contain"
+            fill
+            src={generatedCardUrl}
+            unoptimized
+          />
+        </div>
+        <div className="flex w-full max-w-[500px] gap-4">
+          <Button className="flex-1" onClick={handleDownload} type="button">
+            Download Card
+          </Button>
+          <Button
+            className="flex-1"
+            onClick={() => {
+              setGeneratedCardUrl(null);
+              setUploadedImage(null);
+              form.reset();
+            }}
+            type="button"
+            variant="outline"
+          >
+            Create Another
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={form.handleSubmit(onSubmit)}>
       <FieldGroup>
         <FieldSet>
-          <FieldLegend>Image Upload</FieldLegend>
+          <FieldLegend>Card Details</FieldLegend>
           <FieldDescription>
-            Upload an image to generate your Pokemon card. All images are
-            processed securely.
+            Enter the details for your card and upload an image.
           </FieldDescription>
+
+          <FieldGroup>
+            <Field>
+              <Label htmlFor="name">Name</Label>
+              <Input
+                id="name"
+                placeholder="Enter name"
+                type="text"
+                {...form.register("name")}
+                aria-invalid={!!form.formState.errors.name}
+              />
+              {form.formState.errors.name && (
+                <FieldError errors={[form.formState.errors.name]} />
+              )}
+            </Field>
+
+            <Field>
+              <Label htmlFor="birthday">Birthday</Label>
+              <Input
+                id="birthday"
+                type="date"
+                {...form.register("birthday")}
+                aria-invalid={!!form.formState.errors.birthday}
+              />
+              {form.formState.errors.birthday && (
+                <FieldError errors={[form.formState.errors.birthday]} />
+              )}
+            </Field>
+          </FieldGroup>
 
           <FieldGroup>
             <Controller
@@ -184,6 +350,7 @@ export default function ImageUpload() {
                     </>
                   ) : (
                     <>
+                      {/* biome-ignore lint: This is a standard file upload pattern */}
                       <div
                         className={`relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-12 transition-colors ${
                           isDragging
@@ -256,7 +423,9 @@ export default function ImageUpload() {
                   disabled={isSubmitting}
                   type="submit"
                 >
-                  {isSubmitting ? "Processing..." : "Generate Card"}
+                  {isSubmitting
+                    ? progressMessage || "Processing..."
+                    : "Generate Card"}
                 </Button>
               </Field>
             </FieldGroup>
