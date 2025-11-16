@@ -2,6 +2,9 @@
 
 Transform your photos into retro Pokemon-style trading cards! This application uses AI to analyze your image, determine your Pokemon type, generate a unique special ability, and create a beautiful retro 90s Pokemon card complete with custom artwork.
 
+<img width="500" height="700" alt="pokemon-card (5)" src="https://github.com/user-attachments/assets/90355d4b-f368-4935-8ada-f10fad109245" />
+
+
 ## Features
 
 - **Upload Your Photo** - Simply drag and drop or select an image
