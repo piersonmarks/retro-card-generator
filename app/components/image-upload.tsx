@@ -103,10 +103,6 @@ async function submitFormData(
     body: formData,
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to process image");
-  }
-
   // Log payment response if available
   const paymentResponseHeader = response.headers.get("x-payment-response");
   if (paymentResponseHeader) {
